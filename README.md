@@ -1,0 +1,73 @@
+# oficina-infra-k8s
+
+Terraform: VPC + cluster Kubernetes gerenciado (**Amazon EKS**) — repositório 2 de 4 do
+Tech Challenge Fase 3. É a base compartilhada: os outros três repositórios
+(`oficina-infra-db`, `oficina-lambda-auth`, `oficina-tech-challenge`) leem a VPC/subnets
+publicadas aqui via SSM Parameter Store.
+
+## ⚠️ Custo real
+
+Este repositório provisiona recursos pagos: control plane EKS (~US$ 0,10/h), 1 NAT
+Gateway (~US$ 0,045/h + tráfego) e 2x `t3.medium` (~US$ 0,04/h cada). **Rode
+`terraform destroy` assim que terminar a demonstração** para não deixar cobrando.
+
+## Por que EKS
+
+Ver `docs/rfc/` no repositório principal para a análise completa das alternativas.
+Resumo: gerenciado (sem operar o control plane), integra nativamente com IAM/VPC/ELB da
+AWS, e é a opção mais documentada/usada nesse tipo de desafio — reduz risco de
+configuração incorreta em relação a montar um cluster self-managed.
+
+## Pré-requisitos
+
+- Conta AWS com credenciais configuradas (`aws configure` ou variáveis de ambiente —
+  **nunca** comite credenciais neste repositório).
+- Terraform >= 1.5, AWS CLI, `kubectl`.
+
+## Como aplicar
+
+```bash
+terraform init
+terraform apply
+aws eks update-kubeconfig --region us-east-1 --name oficina-eks
+kubectl get nodes   # confirma que o cluster está de pé
+```
+
+Depois de aplicado, os outros repositórios (`oficina-infra-db`, `oficina-lambda-auth`)
+já conseguem ler `/oficina/vpc_id`, `/oficina/private_subnet_ids` etc. via SSM — aplique
+este repositório **primeiro**.
+
+## Recursos criados
+
+| Recurso | Descrição |
+|---|---|
+| `module.vpc` | VPC `10.20.0.0/16`, 2 AZs, subnets públicas + privadas, 1 NAT Gateway |
+| `module.eks` | Cluster EKS (Kubernetes 1.30), node group gerenciado (2-4x t3.medium) |
+| `aws_ssm_parameter.*` | Publica VPC id, subnet ids e nome do cluster para os outros repos |
+
+## Diagrama
+
+```mermaid
+flowchart TB
+    subgraph VPC["VPC 10.20.0.0/16"]
+        subgraph Public["Subnets públicas"]
+            NAT[NAT Gateway]
+            ELB[Load Balancer da aplicação]
+        end
+        subgraph Private["Subnets privadas"]
+            EKS[Node group EKS<br/>2-4x t3.medium]
+            RDS[(RDS — outro repo)]
+            LAMBDA[Lambda auth — outro repo]
+        end
+    end
+    ELB --> EKS
+    EKS --> RDS
+    LAMBDA --> RDS
+    EKS -.egress via.-> NAT
+```
+
+## Destruir
+
+```bash
+terraform destroy
+```
