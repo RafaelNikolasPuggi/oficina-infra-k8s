@@ -1,0 +1,45 @@
+name: Bootstrap do bucket de state remoto
+
+# Roda uma única vez, manualmente, antes do primeiro terraform init com
+# backend S3. Cria o bucket que os 3 repositórios Terraform (infra-k8s,
+# infra-db, lambda-auth) usam para guardar o state remoto — sem isso, cada
+# execução de CI parte de um state vazio e recria (duplica) infraestrutura
+# já existente (ver histórico no README). Idempotente: pode ser rodado de
+# novo sem erro se o bucket já existir.
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    name: Criar bucket S3 de state (com versionamento e bloqueio de acesso público)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Criar bucket (se ainda não existir) e configurar versionamento/criptografia/bloqueio público
+        run: |
+          set -e
+          BUCKET="oficina-tfstate-231136242237"
+          REGION="${{ vars.AWS_REGION || 'us-east-1' }}"
+
+          if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "bucket $BUCKET já existe."
+          else
+            aws s3api create-bucket --bucket "$BUCKET" --region "$REGION"
+            echo "bucket $BUCKET criado."
+          fi
+
+          aws s3api put-bucket-versioning --bucket "$BUCKET" \
+            --versioning-configuration Status=Enabled
+
+          aws s3api put-bucket-encryption --bucket "$BUCKET" \
+            --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+          aws s3api put-public-access-block --bucket "$BUCKET" \
+            --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+
+          echo "bucket $BUCKET configurado (versionamento + criptografia + bloqueio público)."
