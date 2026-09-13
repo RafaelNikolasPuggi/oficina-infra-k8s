@@ -1,8 +1,8 @@
 name: Cleanup manual (recursos órfãos de applies falhados)
 
-# Só roda quando disparado manualmente — nunca automático. Usado uma única
-# vez para limpar recursos duplicados/órfãos criados por dois applies que
-# falharam antes de termos um backend remoto de state (ver README/ADR).
+# Só roda quando disparado manualmente — nunca automático. Usado para
+# limpar recursos duplicados/órfãos criados por applies que falharam antes
+# de termos um backend remoto de state configurado (ver ADR/README).
 on:
   workflow_dispatch:
 
@@ -17,13 +17,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      - name: Deletar recursos órfãos (runs 34294251476 e 34786900653)
+      - name: "Deletar recursos órfãos (3 applies falhados)"
         run: |
           set +e
 
-          echo "::group::1. Deletar cluster EKS (run 1 — control plane sem node group)"
+          echo "::group::1. Deletar cluster EKS (se ainda existir)"
           aws eks delete-cluster --name oficina-eks 2>&1 || echo "(cluster já não existe ou já em deleção)"
-          echo "Aguardando cluster ser removido..."
           for i in $(seq 1 40); do
             STATUS=$(aws eks describe-cluster --name oficina-eks --query 'cluster.status' --output text 2>/dev/null)
             if [ -z "$STATUS" ]; then echo "cluster removido."; break; fi
@@ -32,13 +31,15 @@ jobs:
           done
           echo "::endgroup::"
 
-          echo "::group::2. Deletar OIDC provider (run 1)"
+          echo "::group::2. Deletar OIDC provider (se ainda existir)"
           aws iam delete-open-id-connect-provider \
             --open-id-connect-provider-arn arn:aws:iam::231136242237:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/82F04C25203F53FCB2D707D031AB4D30 2>&1 || echo "(já não existe)"
           echo "::endgroup::"
 
           delete_vpc_stack() {
-            local NAT_ID=$1 EIP_ID=$2 SUBNETS=$3 PUBLIC_RT=$4 PRIVATE_RT=$5 IGW_ID=$6 VPC_ID=$7 SG_IDS=$8
+            local LABEL=$1 NAT_ID=$2 EIP_ID=$3 SUBNETS=$4 PUBLIC_RT=$5 PRIVATE_RT=$6 IGW_ID=$7 VPC_ID=$8 SG_IDS=$9
+
+            echo "===== Stack $LABEL — VPC $VPC_ID ====="
 
             echo "-- NAT Gateway $NAT_ID --"
             aws ec2 delete-nat-gateway --nat-gateway-id "$NAT_ID" 2>&1 || echo "(já não existe)"
@@ -48,13 +49,30 @@ jobs:
               echo "NAT gateway state: $STATE (tentativa $i/20)"
               sleep 15
             done
+            # ENI do NAT pode levar mais alguns segundos para liberar de fato
+            sleep 20
 
             echo "-- EIP $EIP_ID --"
             aws ec2 release-address --allocation-id "$EIP_ID" 2>&1 || echo "(já não existe)"
 
+            echo "-- ENIs órfãs na VPC $VPC_ID --"
+            for eni in $(aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$VPC_ID" --query 'NetworkInterfaces[].NetworkInterfaceId' --output text 2>/dev/null); do
+              echo "tentando remover ENI $eni"
+              ATTACHMENT=$(aws ec2 describe-network-interfaces --network-interface-ids "$eni" --query 'NetworkInterfaces[0].Attachment.AttachmentId' --output text 2>/dev/null)
+              if [ -n "$ATTACHMENT" ] && [ "$ATTACHMENT" != "None" ]; then
+                aws ec2 detach-network-interface --attachment-id "$ATTACHMENT" --force 2>&1 || true
+                sleep 10
+              fi
+              aws ec2 delete-network-interface --network-interface-id "$eni" 2>&1 || echo "(ENI $eni ainda em uso, seguindo)"
+            done
+
             echo "-- Subnets: $SUBNETS --"
             for s in $SUBNETS; do
-              aws ec2 delete-subnet --subnet-id "$s" 2>&1 || echo "(subnet $s já não existe)"
+              for i in $(seq 1 6); do
+                aws ec2 delete-subnet --subnet-id "$s" 2>&1 && break
+                echo "subnet $s ainda com dependência, tentativa $i/6..."
+                sleep 10
+              done
             done
 
             echo "-- Route tables: $PUBLIC_RT $PRIVATE_RT --"
@@ -68,77 +86,91 @@ jobs:
 
             echo "-- Security groups: $SG_IDS --"
             for sg in $SG_IDS; do
-              aws ec2 delete-security-group --group-id "$sg" 2>&1 || echo "(sg $sg já não existe ou ainda em uso)"
+              for i in $(seq 1 6); do
+                aws ec2 delete-security-group --group-id "$sg" 2>&1 && break
+                echo "sg $sg ainda em uso, tentativa $i/6..."
+                sleep 10
+              done
             done
 
             echo "-- VPC $VPC_ID --"
-            aws ec2 delete-vpc --vpc-id "$VPC_ID" 2>&1 || echo "(vpc já não existe ou ainda tem dependências)"
+            for i in $(seq 1 8); do
+              aws ec2 delete-vpc --vpc-id "$VPC_ID" 2>&1 && { echo "VPC $VPC_ID removida."; break; }
+              echo "VPC $VPC_ID ainda com dependência, tentativa $i/8..."
+              sleep 15
+            done
           }
 
-          echo "::group::3. Stack de rede — RUN 1"
-          delete_vpc_stack \
-            "nat-048bafb5cf7cd738b" \
-            "eipalloc-0ceb63536682bcd88" \
+          echo "::group::3. Stack 1 (run 34294251476)"
+          delete_vpc_stack "1" \
+            "nat-048bafb5cf7cd738b" "eipalloc-0ceb63536682bcd88" \
             "subnet-0e41996ca56a32822 subnet-0ca2442e8a7e97be7 subnet-0872b9efa757f0f53 subnet-0446379ac49612c32" \
-            "rtb-0510441d0b8bcbaf9" \
-            "rtb-03576d11b869ace44" \
-            "igw-0a06cf1909240d1c0" \
-            "vpc-0149993a0ded3d18a" \
+            "rtb-0510441d0b8bcbaf9" "rtb-03576d11b869ace44" \
+            "igw-0a06cf1909240d1c0" "vpc-0149993a0ded3d18a" \
             "sg-0466456ffabc717d2 sg-0fc0f8f2487c3dc84"
           echo "::endgroup::"
 
-          echo "::group::4. Stack de rede — RUN 2"
-          delete_vpc_stack \
-            "nat-063ca8d7473e166c3" \
-            "eipalloc-0112dd1d9c9376245" \
+          echo "::group::4. Stack 2 (run 34786900653)"
+          delete_vpc_stack "2" \
+            "nat-063ca8d7473e166c3" "eipalloc-0112dd1d9c9376245" \
             "subnet-00d360d47a2a4549c subnet-0643bd946d749d14f subnet-08d6544e0c61d17b7 subnet-0f40a6900817983bf" \
-            "rtb-0988234d52ac8e117" \
-            "rtb-0c442cef07d5ed16c" \
-            "igw-013637ea89dd17589" \
-            "vpc-08726120cb3d4b187" \
+            "rtb-0988234d52ac8e117" "rtb-0c442cef07d5ed16c" \
+            "igw-013637ea89dd17589" "vpc-08726120cb3d4b187" \
             "sg-023aa21c81842d0ac sg-01c5e9128539a2c15"
+          echo "::endgroup::"
+
+          echo "::group::5. Stack 3 (run 34787386289)"
+          delete_vpc_stack "3" \
+            "nat-0dc667ddec7858009" "eipalloc-02609fb839645d1d5" \
+            "subnet-0280672e60a226746 subnet-0baa938d4bf11033f subnet-0aed18bee433bfde3 subnet-00e9eb719b31c49f5" \
+            "rtb-09d8bfef7f8f45421" "rtb-03020e44e3c9395d2" \
+            "igw-01a14cd8efb39051f" "vpc-004137c44b4bf32c6" \
+            "sg-05523297b2e1995f8 sg-0316f27f8a2e0c794"
           echo "::endgroup::"
 
           delete_role() {
             local ROLE=$1
-            shift
             echo "-- Role $ROLE --"
             for POLICY_ARN in $(aws iam list-attached-role-policies --role-name "$ROLE" --query 'AttachedPolicies[].PolicyArn' --output text 2>/dev/null); do
-              echo "detaching $POLICY_ARN"
               aws iam detach-role-policy --role-name "$ROLE" --policy-arn "$POLICY_ARN" 2>&1 || true
             done
             aws iam delete-role --role-name "$ROLE" 2>&1 || echo "(role $ROLE já não existe)"
           }
 
-          echo "::group::5. IAM roles — RUN 1"
+          echo "::group::6. IAM roles (3 stacks)"
           delete_role "oficina-eks-cluster-20260913212925771200000001"
           delete_role "default-eks-node-group-20260913212925776400000003"
-          echo "::endgroup::"
-
-          echo "::group::6. IAM roles — RUN 2"
           delete_role "oficina-eks-cluster-20260913222918360000000002"
           delete_role "default-eks-node-group-20260913222918352900000001"
+          delete_role "oficina-eks-cluster-20260913223857346100000003"
+          delete_role "default-eks-node-group-20260913223857344200000002"
           echo "::endgroup::"
 
-          echo "::group::7. IAM policies customer-managed (ambos os runs)"
+          echo "::group::7. IAM policies customer-managed (3 stacks)"
           for POLICY_ARN in \
             "arn:aws:iam::231136242237:policy/oficina-eks-cluster-20260913212925772800000002" \
             "arn:aws:iam::231136242237:policy/oficina-eks-cluster-ClusterEncryption2026091321294677830000000f" \
             "arn:aws:iam::231136242237:policy/oficina-eks-cluster-20260913222918361400000003" \
-            "arn:aws:iam::231136242237:policy/oficina-eks-cluster-ClusterEncryption2026091322294759540000000f"; do
+            "arn:aws:iam::231136242237:policy/oficina-eks-cluster-ClusterEncryption2026091322294759540000000f" \
+            "arn:aws:iam::231136242237:policy/oficina-eks-cluster-20260913223857334000000001" \
+            "arn:aws:iam::231136242237:policy/oficina-eks-cluster-ClusterEncryption2026091322391854660000000f"; do
             aws iam delete-policy --policy-arn "$POLICY_ARN" 2>&1 || echo "($POLICY_ARN já não existe)"
           done
           echo "::endgroup::"
 
-          echo "::group::8. Launch template, CloudWatch log group (RUN 1)"
+          echo "::group::8. Launch template, CloudWatch log group"
           aws ec2 delete-launch-template --launch-template-id lt-044d6038a2c7ccc38 2>&1 || echo "(já não existe)"
           aws logs delete-log-group --log-group-name /aws/eks/oficina-eks/cluster 2>&1 || echo "(já não existe)"
           echo "::endgroup::"
 
-          echo "::group::9. KMS — alias (RUN 1) e agendamento de deleção das chaves (ambos os runs)"
+          echo "::group::9. KMS — alias e agendamento de deleção das 3 chaves"
           aws kms delete-alias --alias-name alias/eks/oficina-eks 2>&1 || echo "(já não existe)"
-          aws kms schedule-key-deletion --key-id 4b5dc57f-7bd0-4003-99ab-38b342368964 --pending-window-in-days 7 2>&1 || echo "(já não existe/já agendada)"
-          aws kms schedule-key-deletion --key-id 620baaaf-9a42-4242-b605-674a1906f0f0 --pending-window-in-days 7 2>&1 || echo "(já não existe/já agendada)"
+          for KEY_ID in \
+            "4b5dc57f-7bd0-4003-99ab-38b342368964" \
+            "620baaaf-9a42-4242-b605-674a1906f0f0" \
+            "bdf1acdd-9812-4885-8078-ca481667ea76"; do
+            aws kms schedule-key-deletion --key-id "$KEY_ID" --pending-window-in-days 7 2>&1 || echo "($KEY_ID já não existe/já agendada)"
+          done
           echo "::endgroup::"
 
           echo "::group::10. Verificação final"
@@ -148,4 +180,6 @@ jobs:
           aws ec2 describe-nat-gateways --filter "Name=state,Values=pending,available,deleting" --query 'NatGateways[].NatGatewayId' --output text
           echo "-- Cluster EKS --"
           aws eks list-clusters --output text
+          echo "-- Elastic IPs alocados --"
+          aws ec2 describe-addresses --query 'Addresses[].AllocationId' --output text
           echo "::endgroup::"
