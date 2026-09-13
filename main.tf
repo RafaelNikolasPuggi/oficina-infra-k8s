@@ -31,8 +31,11 @@ module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
 
-  cluster_name    = var.cluster_name
-  cluster_version = var.cluster_version
+  cluster_name = var.cluster_name
+  # cluster_version deliberadamente omitida: deixa o módulo/AWS escolher a
+  # versão suportada mais recente. Fixamos "1.30" originalmente e a AMI
+  # padrão do node group deixou de suportar essa versão (EKS envelhece
+  # rápido) — ver ADR/README para o histórico desse incidente.
 
   cluster_endpoint_public_access = true
 

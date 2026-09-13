@@ -18,11 +18,6 @@ variable "cluster_name" {
   default = "oficina-eks"
 }
 
-variable "cluster_version" {
-  description = "Versão do Kubernetes no EKS."
-  type        = string
-  default     = "1.30"
-}
 
 variable "node_instance_type" {
   type    = string
