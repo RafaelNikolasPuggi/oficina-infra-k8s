@@ -57,31 +57,36 @@ module "eks" {
 # --- Publica o que os outros 3 repositórios precisam (ver ADR 0006 no repo principal) ---
 
 resource "aws_ssm_parameter" "vpc_id" {
-  name  = "/oficina/vpc_id"
-  type  = "String"
-  value = module.vpc.vpc_id
+  name      = "/oficina/vpc_id"
+  type      = "String"
+  value     = module.vpc.vpc_id
+  overwrite = true
 }
 
 resource "aws_ssm_parameter" "private_subnet_ids" {
-  name  = "/oficina/private_subnet_ids"
-  type  = "String"
-  value = join(",", module.vpc.private_subnets)
+  name      = "/oficina/private_subnet_ids"
+  type      = "String"
+  value     = join(",", module.vpc.private_subnets)
+  overwrite = true
 }
 
 resource "aws_ssm_parameter" "public_subnet_ids" {
-  name  = "/oficina/public_subnet_ids"
-  type  = "String"
-  value = join(",", module.vpc.public_subnets)
+  name      = "/oficina/public_subnet_ids"
+  type      = "String"
+  value     = join(",", module.vpc.public_subnets)
+  overwrite = true
 }
 
 resource "aws_ssm_parameter" "eks_cluster_name" {
-  name  = "/oficina/eks_cluster_name"
-  type  = "String"
-  value = module.eks.cluster_name
+  name      = "/oficina/eks_cluster_name"
+  type      = "String"
+  value     = module.eks.cluster_name
+  overwrite = true
 }
 
 resource "aws_ssm_parameter" "vpc_cidr" {
-  name  = "/oficina/vpc_cidr"
-  type  = "String"
-  value = var.vpc_cidr
+  name      = "/oficina/vpc_cidr"
+  type      = "String"
+  value     = var.vpc_cidr
+  overwrite = true
 }
