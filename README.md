@@ -5,10 +5,17 @@ Tech Challenge Fase 3. É a base compartilhada: os outros três repositórios
 (`oficina-infra-db`, `oficina-lambda-auth`, `oficina-tech-challenge`) leem a VPC/subnets
 publicadas aqui via SSM Parameter Store.
 
+## Deploy ativo
+
+Cluster `oficina-eks`, região `us-east-1`. Roda sob demanda para conter custo — se
+`aws eks describe-cluster --name oficina-eks` não encontrar o cluster, o ambiente foi
+desligado (`terraform destroy`) após a gravação da demonstração.
+
 ## ⚠️ Custo real
 
 Este repositório provisiona recursos pagos: control plane EKS (~US$ 0,10/h), 1 NAT
-Gateway (~US$ 0,045/h + tráfego) e 2x `t3.medium` (~US$ 0,04/h cada). **Rode
+Gateway (~US$ 0,045/h + tráfego) e 2x `t3.small` (~US$ 0,0208/h cada — `t3.medium` não é
+elegível para Free Tier nesta conta, ver `variables.tf`). **Rode
 `terraform destroy` assim que terminar a demonstração** para não deixar cobrando.
 
 ## Por que EKS
