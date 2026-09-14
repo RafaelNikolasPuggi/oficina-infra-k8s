@@ -20,10 +20,8 @@ manter custo ocioso.
 
 ## Por que EKS
 
-Ver `docs/rfc/` no repositório principal para a análise completa das alternativas.
-Resumo: gerenciado (sem operar o control plane), integra nativamente com IAM/VPC/ELB da
-AWS, e é a opção mais documentada/usada nesse tipo de desafio — reduz risco de
-configuração incorreta em relação a montar um cluster self-managed.
+Gerenciado (sem operar o control plane), integra nativamente com IAM/VPC/ELB da AWS.
+Análise completa das alternativas em `docs/rfc/` no repositório principal.
 
 ## Pré-requisitos
 
