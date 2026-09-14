@@ -33,9 +33,8 @@ module "eks" {
 
   cluster_name = var.cluster_name
   # cluster_version deliberadamente omitida: deixa o módulo/AWS escolher a
-  # versão suportada mais recente. Fixamos "1.30" originalmente e a AMI
-  # padrão do node group deixou de suportar essa versão (EKS envelhece
-  # rápido) — ver ADR/README para o histórico desse incidente.
+  # versão suportada mais recente, evitando que a AMI padrão do node group
+  # fique defasada em relação a uma versão fixada manualmente.
 
   cluster_endpoint_public_access = true
 

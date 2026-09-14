@@ -7,16 +7,16 @@ publicadas aqui via SSM Parameter Store.
 
 ## Deploy ativo
 
-Cluster `oficina-eks`, região `us-east-1`. Roda sob demanda para conter custo — se
-`aws eks describe-cluster --name oficina-eks` não encontrar o cluster, o ambiente foi
-desligado (`terraform destroy`) após a gravação da demonstração.
+Cluster `oficina-eks`, região `us-east-1`, provisionado sob demanda. Se
+`aws eks describe-cluster --name oficina-eks` não encontrar o cluster, o ambiente está
+desligado — ver "Como aplicar" abaixo para provisionar novamente.
 
 ## ⚠️ Custo real
 
 Este repositório provisiona recursos pagos: control plane EKS (~US$ 0,10/h), 1 NAT
-Gateway (~US$ 0,045/h + tráfego) e 2x `t3.small` (~US$ 0,0208/h cada — `t3.medium` não é
-elegível para Free Tier nesta conta, ver `variables.tf`). **Rode
-`terraform destroy` assim que terminar a demonstração** para não deixar cobrando.
+Gateway (~US$ 0,045/h + tráfego) e 2x `t3.small` (~US$ 0,0208/h cada, ver
+`variables.tf`). Rode `terraform destroy` quando o ambiente não estiver em uso para não
+manter custo ocioso.
 
 ## Por que EKS
 
@@ -49,7 +49,7 @@ este repositório **primeiro**.
 | Recurso | Descrição |
 |---|---|
 | `module.vpc` | VPC `10.20.0.0/16`, 2 AZs, subnets públicas + privadas, 1 NAT Gateway |
-| `module.eks` | Cluster EKS (Kubernetes 1.30), node group gerenciado (2-4x t3.medium) |
+| `module.eks` | Cluster EKS (versão gerenciada pela AWS — não fixada, ver `variables.tf`), node group gerenciado (2-4x t3.small) |
 | `aws_ssm_parameter.*` | Publica VPC id, subnet ids e nome do cluster para os outros repos |
 
 ## Diagrama
@@ -62,7 +62,7 @@ flowchart TB
             ELB[Load Balancer da aplicação]
         end
         subgraph Private["Subnets privadas"]
-            EKS[Node group EKS<br/>2-4x t3.medium]
+            EKS[Node group EKS<br/>2-4x t3.small]
             RDS[(RDS — outro repo)]
             LAMBDA[Lambda auth — outro repo]
         end

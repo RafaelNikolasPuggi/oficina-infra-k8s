@@ -2,10 +2,10 @@ name: Bootstrap do bucket de state remoto
 
 # Roda uma única vez, manualmente, antes do primeiro terraform init com
 # backend S3. Cria o bucket que os 3 repositórios Terraform (infra-k8s,
-# infra-db, lambda-auth) usam para guardar o state remoto — sem isso, cada
-# execução de CI parte de um state vazio e recria (duplica) infraestrutura
-# já existente (ver histórico no README). Idempotente: pode ser rodado de
-# novo sem erro se o bucket já existir.
+# infra-db, lambda-auth) usam para guardar o state remoto, com locking
+# nativo (use_lockfile) — necessário para que execuções de CI concorrentes
+# ou sucessivas compartilhem o mesmo state em vez de partir do zero a cada
+# run. Idempotente: pode ser rodado de novo sem erro se o bucket já existir.
 on:
   workflow_dispatch:
 

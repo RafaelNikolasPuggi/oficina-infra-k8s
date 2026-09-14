@@ -8,10 +8,9 @@ terraform {
     }
   }
 
-  # State remoto compartilhado entre execuções de CI — sem isso, cada run do
-  # GitHub Actions começa do zero e recria (duplica) infraestrutura já
-  # existente. Ver incidente documentado no README. Bucket criado uma única
-  # vez via workflow bootstrap-state.yml (workflow_dispatch manual).
+  # State remoto compartilhado entre execuções de CI, com locking nativo
+  # (use_lockfile) para runs concorrentes. Bucket criado uma única vez via
+  # workflow bootstrap-state.yml (workflow_dispatch manual).
   backend "s3" {
     bucket       = "oficina-tfstate-231136242237"
     key          = "infra-k8s/terraform.tfstate"
