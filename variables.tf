@@ -21,7 +21,11 @@ variable "cluster_name" {
 
 variable "node_instance_type" {
   type    = string
-  default = "t3.medium"
+  # t3.medium não é aceito nesta conta (restrição de Free Tier em contas
+  # novas — InvalidParameterCombination: "not eligible for Free Tier").
+  # t3.small está na lista de tipos free-tier-eligible confirmada via
+  # `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`.
+  default = "t3.small"
 }
 
 variable "node_desired_size" {
