@@ -21,10 +21,8 @@ variable "cluster_name" {
 
 variable "node_instance_type" {
   type = string
-  # t3.medium não é aceito nesta conta (restrição de Free Tier em contas
-  # novas — InvalidParameterCombination: "not eligible for Free Tier").
-  # t3.small está na lista de tipos free-tier-eligible confirmada via
-  # `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`.
+  # t3.small: tipo elegível para Free Tier, suficiente para os pods de
+  # sistema do EKS (kube-proxy, CNI, CoreDNS) + a carga da aplicação.
   default = "t3.small"
 }
 
