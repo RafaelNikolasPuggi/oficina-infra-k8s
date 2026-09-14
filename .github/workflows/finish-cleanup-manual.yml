@@ -1,16 +1,14 @@
-name: Finalizar limpeza (security groups presos por referência cruzada)
+name: Diagnóstico rápido (tipos de instância elegíveis para Free Tier)
 
-# Só roda manualmente. Continuação do cleanup-manual.yml: subnets, route
-# tables extras e IGWs das 3 VPCs órfãs já sumiram sozinhos (propagação da
-# AWS), mas os security groups do EKS (cluster/node) ficaram presos porque
-# se referenciam mutuamente nas regras de ingress/egress — a AWS não deixa
-# deletar um SG referenciado por outro. Revoga as regras antes de deletar.
+# Só roda manualmente. Usado pontualmente para descobrir quais instance
+# types esta conta AWS aceita, depois que um node group do EKS falhou com
+# "not eligible for Free Tier" usando t3.medium — ver histórico no README.
 on:
   workflow_dispatch:
 
 jobs:
-  finish-cleanup:
-    name: Revogar regras e remover os 3 security groups + VPCs restantes
+  check:
+    name: Listar instance types free-tier-eligible em us-east-1
     runs-on: ubuntu-latest
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
@@ -19,66 +17,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      - name: Revogar regras e deletar SGs/VPCs
+      - name: Listar tipos free-tier-eligible
         run: |
-          set +e
-
-          revoke_and_delete_sg() {
-            local SG=$1
-            echo "-- revogando regras de $SG --"
-            INGRESS=$(aws ec2 describe-security-groups --group-ids "$SG" --query 'SecurityGroups[0].IpPermissions' --output json 2>/dev/null)
-            if [ -n "$INGRESS" ] && [ "$INGRESS" != "[]" ] && [ "$INGRESS" != "null" ]; then
-              aws ec2 revoke-security-group-ingress --group-id "$SG" --ip-permissions "$INGRESS" 2>&1 || true
-            fi
-            EGRESS=$(aws ec2 describe-security-groups --group-ids "$SG" --query 'SecurityGroups[0].IpPermissionsEgress' --output json 2>/dev/null)
-            if [ -n "$EGRESS" ] && [ "$EGRESS" != "[]" ] && [ "$EGRESS" != "null" ]; then
-              aws ec2 revoke-security-group-egress --group-id "$SG" --ip-permissions "$EGRESS" 2>&1 || true
-            fi
-          }
-
-          delete_vpc_final() {
-            local VPC_ID=$1; shift
-            local SGS=("$@")
-            echo "===== Finalizando VPC $VPC_ID ====="
-
-            for sg in "${SGS[@]}"; do
-              revoke_and_delete_sg "$sg"
-            done
-            for sg in "${SGS[@]}"; do
-              for i in $(seq 1 5); do
-                aws ec2 delete-security-group --group-id "$sg" 2>&1 && { echo "SG $sg removido."; break; }
-                echo "sg $sg ainda bloqueado, tentativa $i/5..."
-                sleep 10
-              done
-            done
-
-            echo "-- Route tables não-main remanescentes --"
-            for rt in $(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" \
-                --query 'RouteTables[?Associations[0].Main!=`true`].RouteTableId' --output text); do
-              aws ec2 delete-route-table --route-table-id "$rt" 2>&1 || echo "(rt $rt falhou)"
-            done
-
-            echo "-- VPC $VPC_ID --"
-            for i in $(seq 1 8); do
-              aws ec2 delete-vpc --vpc-id "$VPC_ID" 2>&1 && { echo "VPC $VPC_ID removida."; break; }
-              echo "VPC $VPC_ID ainda com dependência, tentativa $i/8..."
-              sleep 15
-            done
-          }
-
-          delete_vpc_final vpc-0149993a0ded3d18a sg-0fc0f8f2487c3dc84 sg-0466456ffabc717d2
-          delete_vpc_final vpc-08726120cb3d4b187 sg-01c5e9128539a2c15 sg-023aa21c81842d0ac
-          delete_vpc_final vpc-004137c44b4bf32c6 sg-05523297b2e1995f8 sg-0316f27f8a2e0c794
-
-          echo "::group::Verificação final"
-          echo "-- VPCs remanescentes com a tag do projeto --"
-          aws ec2 describe-vpcs --filters "Name=tag:Name,Values=oficina-vpc" --query 'Vpcs[].VpcId' --output text
-          echo "-- Todas as VPCs (para conferir se sobrou default) --"
-          aws ec2 describe-vpcs --query 'Vpcs[].{Id:VpcId,Default:IsDefault}' --output table
-          echo "-- NAT Gateways ativos --"
-          aws ec2 describe-nat-gateways --filter "Name=state,Values=pending,available,deleting" --query 'NatGateways[].NatGatewayId' --output text
-          echo "-- Cluster EKS --"
-          aws eks list-clusters --output text
-          echo "-- Elastic IPs alocados --"
-          aws ec2 describe-addresses --query 'Addresses[].AllocationId' --output text
-          echo "::endgroup::"
+          aws ec2 describe-instance-types \
+            --filters "Name=free-tier-eligible,Values=true" \
+            --query 'InstanceTypes[].{Type:InstanceType,vCPUs:VCpuInfo.DefaultVCpus,MemoryMiB:MemoryInfo.SizeInMiB}' \
+            --output table
