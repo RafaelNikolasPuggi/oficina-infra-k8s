@@ -51,6 +51,26 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Escalar o node group via AWS (o módulo ignora scaling_config[0].desired_size pós-criação)
+        run: |
+          CLUSTER_NAME=$(aws ssm get-parameter --name /oficina/eks_cluster_name --query Parameter.Value --output text 2>/dev/null || echo "")
+          if [ -n "$CLUSTER_NAME" ]; then
+            NODEGROUP=$(aws eks list-nodegroups --cluster-name "$CLUSTER_NAME" --query 'nodegroups[0]' --output text 2>/dev/null || echo "None")
+            if [ "$NODEGROUP" != "None" ] && [ -n "$NODEGROUP" ]; then
+              CURRENT=$(aws eks describe-nodegroup --cluster-name "$CLUSTER_NAME" --nodegroup-name "$NODEGROUP" --query 'nodegroup.scalingConfig.desiredSize' --output text)
+              # Precisa bater com node_min_size/node_desired_size/node_max_size em
+              # variables.tf -- o terraform-aws-modules/eks ignora
+              # scaling_config[0].desired_size depois da criação (lifecycle.ignore_changes,
+              # pra não disputar com autoscaling), então mudar só a variável nunca escala
+              # um node group já existente; precisa empurrar via API primeiro.
+              if [ "$CURRENT" -lt 3 ]; then
+                aws eks update-nodegroup-config --cluster-name "$CLUSTER_NAME" --nodegroup-name "$NODEGROUP" \
+                  --scaling-config minSize=3,maxSize=4,desiredSize=3
+                aws eks wait nodegroup-active --cluster-name "$CLUSTER_NAME" --nodegroup-name "$NODEGROUP"
+              fi
+            fi
+          fi
+
       - uses: hashicorp/setup-terraform@v3
       - run: terraform init
       - run: terraform apply -auto-approve
