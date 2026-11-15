@@ -1,7 +1,8 @@
 # ATENÇÃO — CUSTO REAL: este arquivo provisiona um control plane EKS
 # (~US$ 0,10/h), um NAT Gateway (~US$ 0,045/h + tráfego) e 2 instâncias
-# t3.medium (~US$ 0,0416/h cada). Rode `terraform destroy` assim que terminar
-# de gravar a demonstração — ver README.md.
+# t3.small (~US$ 0,0208/h cada). Rode `terraform destroy` assim que terminar
+# de gravar a demonstração — ver README.md. Orçamento mensal com alerta por
+# e-mail configurado abaixo (aws_budgets_budget).
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
@@ -116,4 +117,49 @@ resource "aws_ssm_parameter" "vpc_cidr" {
   type      = "String"
   value     = var.vpc_cidr
   overwrite = true
+}
+
+# --- Orçamento mensal (rede de segurança contra "esquecer ligado") ---
+# Alerta por e-mail em 50%/80%/100% (real) e >100% (previsto). Não desliga
+# nada automaticamente — os dados de billing da AWS atrasam algumas horas,
+# então isto é um alarme, não um limite físico. Ver README para o
+# procedimento de destroy manual assim que terminar os testes/gravação.
+resource "aws_budgets_budget" "monthly_cost_guard" {
+  name         = "oficina-fase4-mensal"
+  budget_type  = "COST"
+  limit_amount = tostring(var.budget_limit_usd)
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 50
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 80
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "FORECASTED"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
 }
