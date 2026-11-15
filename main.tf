@@ -41,6 +41,8 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
+  enable_irsa = true
+
   eks_managed_node_groups = {
     default = {
       instance_types = [var.node_instance_type]
@@ -51,6 +53,32 @@ module "eks" {
   }
 
   enable_cluster_creator_admin_permissions = true
+
+  # Fase 4: o pagamento-service precisa de um PersistentVolumeClaim de
+  # verdade pro MongoDB self-hosted (hoje sem PVC — ver
+  # k8s-aws/06-mongodb.yaml naquele repo). Sem este addon, nenhuma PVC do
+  # cluster consegue ser provisionada dinamicamente (fica Pending pra
+  # sempre) — EKS não vem com um driver de volume por padrão.
+  cluster_addons = {
+    aws-ebs-csi-driver = {
+      service_account_role_arn = module.ebs_csi_irsa.iam_role_arn
+    }
+  }
+}
+
+module "ebs_csi_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.0"
+
+  role_name             = "${var.cluster_name}-ebs-csi-driver"
+  attach_ebs_csi_policy = true
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
+    }
+  }
 }
 
 # --- Publica o que os outros 3 repositórios precisam (ver ADR 0006 no repo principal) ---
