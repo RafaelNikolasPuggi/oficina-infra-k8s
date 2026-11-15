@@ -18,6 +18,13 @@ Gateway (~US$ 0,045/h + tráfego) e 2x `t3.small` (~US$ 0,0208/h cada, ver
 `variables.tf`). Rode `terraform destroy` quando o ambiente não estiver em uso para não
 manter custo ocioso.
 
+Há também um `aws_budgets_budget` (limite padrão US$ 20/mês, ver
+`variables.budget_limit_usd`) com alerta por e-mail em 50%/80%/100% do limite real e
+>100% previsto. É só um alarme — os dados de billing da AWS atrasam algumas horas, então
+ele **não substitui** rodar `terraform destroy` assim que terminar os testes/gravação.
+O e-mail do alerta vem do secret `BUDGET_ALERT_EMAIL` (nunca comitado, repositório é
+público).
+
 ## Por que EKS
 
 Gerenciado (sem operar o control plane), integra nativamente com IAM/VPC/ELB da AWS.
