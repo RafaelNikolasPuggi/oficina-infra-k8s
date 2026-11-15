@@ -27,13 +27,17 @@ variable "node_instance_type" {
 }
 
 variable "node_desired_size" {
+  # 3, não 2: com RabbitMQ + MongoDB + os 3 microsserviços + os DaemonSets
+  # do New Relic + addons do EKS (CoreDNS, EBS CSI, aws-node, kube-proxy),
+  # 2 nós t3.small esgotam IPs de pod (limite de ENI) mesmo com 1 réplica
+  # por serviço.
   type    = number
-  default = 2
+  default = 3
 }
 
 variable "node_min_size" {
   type    = number
-  default = 2
+  default = 3
 }
 
 variable "node_max_size" {

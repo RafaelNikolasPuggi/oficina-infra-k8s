@@ -14,7 +14,7 @@ desligado — ver "Como aplicar" abaixo para provisionar novamente.
 ## ⚠️ Custo real
 
 Este repositório provisiona recursos pagos: control plane EKS (~US$ 0,10/h), 1 NAT
-Gateway (~US$ 0,045/h + tráfego) e 2x `t3.small` (~US$ 0,0208/h cada, ver
+Gateway (~US$ 0,045/h + tráfego) e 3x `t3.small` (~US$ 0,0208/h cada, ver
 `variables.tf`). Rode `terraform destroy` quando o ambiente não estiver em uso para não
 manter custo ocioso.
 
@@ -54,7 +54,7 @@ este repositório **primeiro**.
 | Recurso | Descrição |
 |---|---|
 | `module.vpc` | VPC `10.20.0.0/16`, 2 AZs, subnets públicas + privadas, 1 NAT Gateway |
-| `module.eks` | Cluster EKS (versão gerenciada pela AWS — não fixada, ver `variables.tf`), node group gerenciado (2-4x t3.small) |
+| `module.eks` | Cluster EKS (versão gerenciada pela AWS — não fixada, ver `variables.tf`), node group gerenciado (3-4x t3.small) |
 | `aws_ssm_parameter.*` | Publica VPC id, subnet ids e nome do cluster para os outros repos |
 
 ## Diagrama
@@ -67,7 +67,7 @@ flowchart TB
             ELB[Load Balancer da aplicação]
         end
         subgraph Private["Subnets privadas"]
-            EKS[Node group EKS<br/>2-4x t3.small]
+            EKS[Node group EKS<br/>3-4x t3.small]
             RDS[(RDS — outro repo)]
             LAMBDA[Lambda auth — outro repo]
         end
