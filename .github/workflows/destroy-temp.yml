@@ -18,6 +18,29 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
       - uses: azure/setup-kubectl@v4
 
+      - name: Apagar o cluster EKS orfao (existe na AWS mas o terraform nao sabe)
+        run: |
+          if aws eks describe-cluster --name oficina-eks >/dev/null 2>&1; then
+            echo "Cluster oficina-eks encontrado (orfao no state) — verificando nodegroups..."
+            NODEGROUPS=$(aws eks list-nodegroups --cluster-name oficina-eks --query 'nodegroups' --output text)
+            if [ -n "$NODEGROUPS" ] && [ "$NODEGROUPS" != "None" ]; then
+              for ng in $NODEGROUPS; do
+                echo "Apagando nodegroup $ng..."
+                aws eks delete-nodegroup --cluster-name oficina-eks --nodegroup-name "$ng"
+                aws eks wait nodegroup-deleted --cluster-name oficina-eks --nodegroup-name "$ng"
+              done
+            else
+              echo "Sem nodegroups — cluster vazio."
+            fi
+            echo "Apagando o cluster oficina-eks..."
+            aws eks delete-cluster --name oficina-eks
+            echo "Aguardando a AWS confirmar a exclusao do cluster (pode levar alguns minutos)..."
+            aws eks wait cluster-deleted --name oficina-eks
+            echo "Cluster oficina-eks apagado."
+          else
+            echo "Nenhum cluster oficina-eks encontrado — nada a fazer aqui."
+          fi
+
       - name: Remover os LoadBalancers da aplicação (senão a VPC não destrói)
         run: |
           CLUSTER_NAME=$(aws eks list-clusters --query "clusters[?@=='oficina-eks']" --output text || echo "")
