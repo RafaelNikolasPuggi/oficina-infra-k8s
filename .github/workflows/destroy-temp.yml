@@ -62,6 +62,10 @@ jobs:
           echo "Aguardando a AWS liberar a ENI do Lambda..."
           sleep 180
 
+      - name: Apagar o security group orfao do lambda (travava a exclusao da VPC)
+        run: |
+          aws ec2 delete-security-group --group-id sg-0a04f899b5c7ebae9 2>&1 || echo "ja nao existe ou nao e mais esse id — segue o jogo"
+
       - uses: hashicorp/setup-terraform@v3
       - run: terraform init -input=false
       - run: terraform destroy -input=false -auto-approve
