@@ -7,6 +7,8 @@ jobs:
   check:
     name: Checar estado real e liberar lock
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_budget_alert_email: ${{ secrets.BUDGET_ALERT_EMAIL }}
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
@@ -29,11 +31,11 @@ jobs:
       - name: Plan destroy (com saida ao vivo via tee, sem buffer) + auto force-unlock se precisar
         run: |
           set +e
-          terraform plan -destroy -no-color 2>&1 | tee plan.log
+          terraform plan -destroy -input=false -no-color 2>&1 | tee plan.log
           STATUS=${PIPESTATUS[0]}
           if [ $STATUS -ne 0 ] && grep -q "Error acquiring the state lock" plan.log; then
             LOCKID=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' plan.log | head -1)
             echo "Lock travado detectado (ID: $LOCKID) — liberando e tentando de novo..."
             terraform force-unlock -force "$LOCKID"
-            terraform plan -destroy -no-color 2>&1 | tee plan.log
+            terraform plan -destroy -input=false -no-color 2>&1 | tee plan.log
           fi

@@ -40,5 +40,5 @@ jobs:
           sleep 180
 
       - uses: hashicorp/setup-terraform@v3
-      - run: terraform init
-      - run: terraform destroy -auto-approve
+      - run: terraform init -input=false
+      - run: terraform destroy -input=false -auto-approve
