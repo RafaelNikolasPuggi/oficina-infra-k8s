@@ -18,13 +18,22 @@ jobs:
         run: |
           echo "== EKS clusters =="
           aws eks list-clusters --output json
+          echo "== EKS cluster oficina-eks (status) =="
+          aws eks describe-cluster --name oficina-eks --query 'cluster.{status:status,endpoint:endpoint}' --output json 2>&1 || echo "describe-cluster falhou (cluster pode nao existir mais)"
           echo "== NAT Gateways =="
           aws ec2 describe-nat-gateways --filter "Name=tag:Name,Values=oficina-*" --query 'NatGateways[].{Id:NatGatewayId,State:State}' --output table
           echo "== VPCs =="
           aws ec2 describe-vpcs --filters "Name=tag:Name,Values=oficina-vpc" --query 'Vpcs[].VpcId' --output text
       - uses: hashicorp/setup-terraform@v3
       - run: terraform init
-      - name: Force-unlock se houver lock travado
+      - name: Plan destroy (com saida ao vivo via tee, sem buffer) + auto force-unlock se precisar
         run: |
-          terraform force-unlock -force bca8eefe-4565-f5fc-d082-af12b23451af || true
-      - run: terraform plan -destroy -no-color | tail -100
+          set +e
+          terraform plan -destroy -no-color 2>&1 | tee plan.log
+          STATUS=${PIPESTATUS[0]}
+          if [ $STATUS -ne 0 ] && grep -q "Error acquiring the state lock" plan.log; then
+            LOCKID=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' plan.log | head -1)
+            echo "Lock travado detectado (ID: $LOCKID) — liberando e tentando de novo..."
+            terraform force-unlock -force "$LOCKID"
+            terraform plan -destroy -no-color 2>&1 | tee plan.log
+          fi
