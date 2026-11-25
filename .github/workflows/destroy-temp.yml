@@ -1,0 +1,36 @@
+name: Destroy (temporário)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    env:
+      TF_VAR_budget_alert_email: ${{ secrets.BUDGET_ALERT_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - uses: azure/setup-kubectl@v4
+
+      - name: Remover os LoadBalancers da aplicação (senão a VPC não destrói)
+        run: |
+          CLUSTER_NAME=$(aws eks list-clusters --query "clusters[?@=='oficina-eks']" --output text || echo "")
+          if [ -n "$CLUSTER_NAME" ]; then
+            aws eks update-kubeconfig --region ${{ vars.AWS_REGION || 'us-east-1' }} --name "$CLUSTER_NAME"
+            kubectl delete svc oficina-os-app -n oficina-os --ignore-not-found --timeout=60s || true
+            kubectl delete svc oficina-pagamento-app -n oficina-pagamento --ignore-not-found --timeout=60s || true
+            echo "Esperando a AWS liberar os Load Balancers e ENIs associadas..."
+            sleep 120
+          else
+            echo "Cluster oficina-eks nao encontrado — nada pra limpar."
+          fi
+
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform destroy -auto-approve
