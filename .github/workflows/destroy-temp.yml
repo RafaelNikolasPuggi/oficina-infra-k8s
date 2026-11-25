@@ -31,6 +31,14 @@ jobs:
             echo "Cluster oficina-eks nao encontrado — nada pra limpar."
           fi
 
+      - name: Remover o Lambda de autenticação da VPC (ENI dele trava a exclusão das subnets)
+        run: |
+          aws lambda update-function-configuration \
+            --function-name oficina-auth-cliente \
+            --vpc-config '{"SubnetIds":[],"SecurityGroupIds":[]}' 2>/dev/null || true
+          echo "Aguardando a AWS liberar a ENI do Lambda..."
+          sleep 180
+
       - uses: hashicorp/setup-terraform@v3
       - run: terraform init
       - run: terraform destroy -auto-approve
