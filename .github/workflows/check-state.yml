@@ -1,0 +1,30 @@
+name: Check e Force Unlock (temporário)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    name: Checar estado real e liberar lock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Status real na AWS (fora do terraform)
+        run: |
+          echo "== EKS clusters =="
+          aws eks list-clusters --output json
+          echo "== NAT Gateways =="
+          aws ec2 describe-nat-gateways --filter "Name=tag:Name,Values=oficina-*" --query 'NatGateways[].{Id:NatGatewayId,State:State}' --output table
+          echo "== VPCs =="
+          aws ec2 describe-vpcs --filters "Name=tag:Name,Values=oficina-vpc" --query 'Vpcs[].VpcId' --output text
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - name: Force-unlock se houver lock travado
+        run: |
+          terraform force-unlock -force bca8eefe-4565-f5fc-d082-af12b23451af || true
+      - run: terraform plan -destroy -no-color | tail -100
